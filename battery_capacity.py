@@ -2,21 +2,22 @@ import streamlit as st
 import numpy as np
 import plotly.graph_objects as go
 
-# Title
-st.title("Battery Capacity Retention Over Time")
+# Title and battery model
+battery_model = "YUASA NPW45-12"
+st.title(f"Battery Capacity Retention Over Time — {battery_model}")
 
 # Sidebar Inputs
-initial_capacity = st.sidebar.slider("Initial Capacity (%)", 50, 100, 100)
-input_months = st.sidebar.number_input("Storage Time (Months)", min_value=0, max_value=120, value=1)
+initial_capacity = st.sidebar.slider("Initial Capacity (%)", 50, 100, 95)
+input_months = st.sidebar.number_input("Storage Time (Months)", min_value=0, max_value=120, value=12)
 input_days = st.sidebar.number_input("Additional Days", min_value=0, max_value=31, value=0)
 input_hours = st.sidebar.number_input("Additional Hours", min_value=0, max_value=23, value=0)
 min_temp = st.sidebar.slider("Min Temperature (°C)", -20, 25, -15)
-max_temp = st.sidebar.slider("Max Temperature (°C)", 25, 60, 40)
+max_temp = st.sidebar.slider("Max Temperature (°C)", 25, 60, 45)
 temp_step = st.sidebar.slider("Temperature Step (°C)", 1, 10, 5)
 
-# Constants
-base_temp = 25
-base_rate = 0.03  # 3% per month at 25°C
+# Constants specific to YUASA NPW45-12
+base_temp = 25              # Reference temperature in °C
+base_rate = 0.0125          # ~1.25% per month at 25°C based on datasheet
 Q0 = initial_capacity
 
 # Time Conversion: Total storage time in months
@@ -25,21 +26,25 @@ x_months = np.arange(0, total_months + 0.1, 0.1)
 x_days = x_months * 30.42
 x_hours = x_days * 24
 
-# Temperature range
+# Temperature range & conversion to pure Python ints
 temps = np.arange(min_temp, max_temp + 1, temp_step)
+temps_list = [int(t) for t in temps]
 
 # Color palette and map
-color_palette = ["#636EFA", "#EF553B", "#00CC96", "#AB63FA", "#FFA15A", "#19D3F3", "#FF6692", "#B6E880"]
-color_map = {temp: color_palette[i % len(color_palette)] for i, temp in enumerate(temps)}
+color_palette = [
+    "#636EFA", "#EF553B", "#00CC96", "#AB63FA",
+    "#FFA15A", "#19D3F3", "#FF6692", "#B6E880"
+]
+color_map = {t: color_palette[i % len(color_palette)] for i, t in enumerate(temps_list)}
 
 # Create figure
 fig = go.Figure()
 curves = {}
 
-for T in temps:
+for T in temps_list:
+    # Arrhenius-based temperature scaling
     k_T = base_rate * 2 ** ((T - base_temp) / 10)
     capacity = Q0 * ((1 - k_T) ** x_months)
-    color = color_map[T]
     final_capacity = capacity[-1]
     curves[T] = capacity
 
@@ -49,27 +54,45 @@ for T in temps:
         y=capacity,
         mode='lines',
         name=f"{T}°C — Final: {final_capacity:.1f}%",
-        line=dict(color=color),
+        line=dict(color=color_map[T]),
         hovertemplate='Month: %{x:.2f}<br>Capacity: %{y:.2f}%<extra></extra>'
     ))
 
-    # Terminal dot (no value label)
+    # Terminal dot
     fig.add_trace(go.Scatter(
         x=[x_months[-1]],
         y=[final_capacity],
         mode='markers',
-        marker=dict(size=8, color=color),
+        marker=dict(size=8, color=color_map[T]),
         showlegend=False,
-        hovertemplate=f"<b>Temp:</b> {T}°C<br><b>Month:</b> {x_months[-1]:.2f}<br><b>Hour:</b> {x_hours[-1]:.0f}<br><b>Cap:</b> {final_capacity:.2f}%<extra></extra>"
+        hovertemplate=(
+            f"<b>Temp:</b> {T}°C<br>"
+            f"<b>Month:</b> {x_months[-1]:.2f}<br>"
+            f"<b>Hour:</b> {x_hours[-1]:.0f}<br>"
+            f"<b>Cap:</b> {final_capacity:.2f}%<extra></extra>"
+        )
     ))
 
-# Highlight selection
-highlight_start = st.sidebar.selectbox("Highlight Start Temp (°C)", temps, index=0)
-highlight_end = st.sidebar.selectbox("Highlight End Temp (°C)", temps, index=min(1, len(temps)-1))
+# Helper: find closest index in the original numpy array
+def get_closest_index(array, value):
+    return int((np.abs(array - value)).argmin())
 
+default_start = -5
+default_end = 35
+highlight_start_idx = get_closest_index(temps, default_start)
+highlight_end_idx = get_closest_index(temps, default_end)
+
+# Use native int list for selectbox
+highlight_start = st.sidebar.selectbox(
+    "Highlight Start Temp (°C)", temps_list, index=highlight_start_idx
+)
+highlight_end = st.sidebar.selectbox(
+    "Highlight End Temp (°C)", temps_list, index=highlight_end_idx
+)
+
+# Highlight range fill
 if highlight_start != highlight_end:
-    lower_T = min(highlight_start, highlight_end)
-    upper_T = max(highlight_start, highlight_end)
+    lower_T, upper_T = sorted((highlight_start, highlight_end))
     y_lower = curves[lower_T]
     y_upper = curves[upper_T]
 
@@ -83,14 +106,14 @@ if highlight_start != highlight_end:
         showlegend=False
     ))
 
-# Layout
+# Final layout
 fig.update_layout(
-    title="Battery Capacity Retention Over Time",
+    title=f"{battery_model} — Capacity Retention vs. Time & Temperature",
     xaxis_title="Storage Time (Months)",
     yaxis_title="Remaining Capacity (%)",
     hovermode='x unified',
     height=600
 )
 
-# Show plot
+# Render chart
 st.plotly_chart(fig, use_container_width=True)
