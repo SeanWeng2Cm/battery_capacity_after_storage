@@ -4,6 +4,7 @@ import plotly.graph_objects as go
 
 # Title and battery model
 battery_model = "YUASA NPW45-12"
+nominal_capacity_ah = 7.5  # 45Ah battery
 st.title(f"Battery Capacity Retention Over Time — {battery_model}")
 
 # Sidebar Inputs
@@ -17,7 +18,7 @@ temp_step = st.sidebar.slider("Temperature Step (°C)", 1, 10, 5)
 
 # Constants specific to YUASA NPW45-12
 base_temp = 25              # Reference temperature in °C
-base_rate = 0.0125          # ~1.25% per month at 25°C based on datasheet
+base_rate = 0.0342          # ~3.42% per month based on 80% remaining after 6 months
 Q0 = initial_capacity
 
 # Time Conversion: Total storage time in months
@@ -26,7 +27,7 @@ x_months = np.arange(0, total_months + 0.1, 0.1)
 x_days = x_months * 30.42
 x_hours = x_days * 24
 
-# Temperature range & conversion to pure Python ints
+# Temperature range
 temps = np.arange(min_temp, max_temp + 1, temp_step)
 temps_list = [int(t) for t in temps]
 
@@ -65,24 +66,19 @@ for T in temps_list:
         mode='markers',
         marker=dict(size=8, color=color_map[T]),
         showlegend=False,
-        hovertemplate=(
-            f"<b>Temp:</b> {T}°C<br>"
-            f"<b>Month:</b> {x_months[-1]:.2f}<br>"
-            f"<b>Hour:</b> {x_hours[-1]:.0f}<br>"
-            f"<b>Cap:</b> {final_capacity:.2f}%<extra></extra>"
-        )
+        hovertemplate=(f"<b>Temp:</b> {T}°C<br>"
+                       f"<b>Month:</b> {x_months[-1]:.2f}<br>"
+                       f"<b>Hour:</b> {x_hours[-1]:.0f}<br>"
+                       f"<b>Cap:</b> {final_capacity:.2f}%<extra></extra>")
     ))
 
 # Helper: find closest index in the original numpy array
 def get_closest_index(array, value):
     return int((np.abs(array - value)).argmin())
 
-default_start = -5
-default_end = 35
-highlight_start_idx = get_closest_index(temps, default_start)
-highlight_end_idx = get_closest_index(temps, default_end)
+highlight_start_idx = get_closest_index(temps, -5)
+highlight_end_idx = get_closest_index(temps, 35)
 
-# Use native int list for selectbox
 highlight_start = st.sidebar.selectbox(
     "Highlight Start Temp (°C)", temps_list, index=highlight_start_idx
 )
@@ -115,5 +111,16 @@ fig.update_layout(
     height=600
 )
 
-# Render chart
 st.plotly_chart(fig, use_container_width=True)
+
+# === Self-Discharge Current Display ===
+st.header("Estimated Self-Discharge Current")
+rate_display = base_rate * 100  # %
+current_base_a = base_rate * nominal_capacity_ah  # A
+current_base_ma = current_base_a * 1000  # mA
+
+st.markdown(f"""
+- 📉 **Base self-discharge rate** at 25°C: **{rate_display:.2f}% per month**
+- 🔋 **Nominal capacity**: {nominal_capacity_ah} Ah
+- 🔌 **Estimated self-discharge current** at 25°C: **{current_base_ma:.0f} mA**
+""")
