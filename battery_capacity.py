@@ -113,14 +113,22 @@ fig.update_layout(
 
 st.plotly_chart(fig, use_container_width=True)
 
+# User-defined temperature for self-discharge current estimation
+est_temp = st.sidebar.number_input("Temperature for Self-Discharge Current Estimation (°C)", min_value=-20, max_value=60, value=25)
+
 # === Self-Discharge Current Display ===
 st.header("Estimated Self-Discharge Current")
-rate_display = base_rate * 100  # %
-current_base_a = base_rate * nominal_capacity_ah  # A
-current_base_ma = current_base_a * 1000  # mA
+
+# Arrhenius scaling for selected temp
+k_est = base_rate * 2 ** ((est_temp - base_temp) / 10)
+current_a = k_est * nominal_capacity_ah  # A
+current_ma = current_a * 1000  # mA
+rate_percent = k_est * 100  # %
 
 st.markdown(f"""
-- 📉 **Base self-discharge rate** at 25°C: **{rate_display:.2f}% per month**
+- 🌡️ **Input temperature**: **{est_temp}°C**
+- 📉 **Estimated self-discharge rate**: **{rate_percent:.2f}% per month**
 - 🔋 **Nominal capacity**: {nominal_capacity_ah} Ah
-- 🔌 **Estimated self-discharge current** at 25°C: **{current_base_ma:.0f} mA**
+- 🔌 **Estimated self-discharge current**: **{current_ma:.0f} mA**
 """)
+
